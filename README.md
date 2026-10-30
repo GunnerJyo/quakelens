@@ -1,61 +1,178 @@
-# QuakeLens
+# QuakeLens — Earth, in motion
 
-**Earth, in motion.** QuakeLens turns the USGS's live earthquake catalog into an explorable global map. Clustered markers reveal seismic hotspots; marker size represents magnitude and marker color represents depth. Filter the recent catalog by time window and minimum magnitude, then open any event's USGS detail page.
+Explore recent earthquakes around the world through an interactive map. QuakeLens combines the **USGS Earthquake GeoJSON feeds** with **MapLibre GL JS** and **Amazon Location Service** to make seismic activity easier to explore.
 
-## Run locally
+<p align="center">
+  <strong>Live app:</strong> <a href="https://d2ksx722i7d9l2.cloudfront.net/">https://d2ksx722i7d9l2.cloudfront.net/</a>
+</p>
 
-The page loads MapLibre and the USGS feed over the network, so serve the `site` folder over HTTP instead of opening the file directly.
+QuakeLens was built for the **AWS Builder Center Weekend Challenge: Map it** (October 30 – November 2, 2026).
 
-```powershell
-cd site
-python -m http.server 8000
-```
+## What you can explore
 
-Open <http://localhost:8000>. The open basemap works without AWS credentials. To use Amazon Location Service, open **Map settings**, paste a restricted Amazon Location API key, and select the AWS region where you created it. The key stays in page memory and is not saved to disk or local storage.
+- **Global earthquake map** with clustered markers at lower zoom levels.
+- **Three time windows:** past 24 hours, 7 days, and 30 days.
+- **Minimum-magnitude filter** to focus on events from a selected magnitude threshold.
+- **Magnitude-aware markers:** marker size represents earthquake magnitude.
+- **Depth visualization:** marker colours distinguish shallow, intermediate, and deep events.
+- **Event details:** select a marker or recent-event entry to inspect its magnitude, place, time, depth, and USGS event page.
+- **Summary statistics:** number of events shown, events of magnitude 4.5 and above, and the largest event in the selected results.
+- **Manual refresh** to request the latest feed again.
 
-## Data and map
+The earthquake catalog is live data, so event counts and the largest event change as USGS updates its feeds.
 
-- **Dataset:** USGS ComCat recent-earthquake summary GeoJSON. The app uses the official `all_day`, `all_week`, and `all_month` feeds. Each feature includes coordinates, origin time, magnitude, depth, place description, and an event-detail URL.
-- **Map rendering:** MapLibre GL JS. With a configured key, the basemap style is served by **Amazon Location Service** (`Standard`, Maps API v2). Without one, an OpenStreetMap raster style provides a usable local preview.
-- **AWS hosting path:** **Amazon S3** stores the static app files and **Amazon CloudFront** serves them over HTTPS using Origin Access Control. A ready-to-deploy CloudFormation template is in `infra/template.yaml`.
-- **Privacy:** No user accounts, analytics, personal data, or backend are used. The optional Amazon Location API key remains in browser memory; use a key restricted to map reads and the deployment's HTTP referrer.
+## Data source
 
-## Deploy to AWS
+QuakeLens uses the United States Geological Survey (USGS) public Earthquake GeoJSON feeds:
 
-Requirements: AWS CLI v2, an AWS account, and permission to create CloudFormation, S3, and CloudFront resources. CloudFront and map requests may incur charges under your account; check current AWS pricing before deployment.
+| In-app time window | USGS feed |
+|---|---|
+| Past 24 hours | [`all_day.geojson`](https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.geojson) |
+| Past 7 days | [`all_week.geojson`](https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_week.geojson) |
+| Past 30 days | [`all_month.geojson`](https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_month.geojson) |
 
-1. In the Amazon Location console, create a map resource and an API key with read access for that map. Restrict the key to the site domain after deployment. Keep the key out of the repository.
-2. From this project folder, create the static hosting stack:
+Each GeoJSON feature represents an earthquake event. QuakeLens reads the event's point coordinates and properties such as magnitude, place, event time, and event-detail URL. The depth value is taken from the third coordinate in the GeoJSON point geometry.
 
-   ```powershell
-   aws cloudformation deploy --template-file infra/template.yaml --stack-name quakelens --capabilities CAPABILITY_IAM
-   ```
+**Data is fetched directly from USGS by the visitor's browser.** The application does not copy the earthquake feed into its S3 bucket or maintain a separate earthquake database.
 
-3. Read the bucket name and CloudFront distribution ID from the stack outputs, then upload the site:
+Source documentation: [USGS Earthquake GeoJSON Feeds](https://earthquake.usgs.gov/earthquakes/feed/v1.0/geojson.php).
 
-   ```powershell
-   $bucket = (aws cloudformation describe-stacks --stack-name quakelens --query "Stacks[0].Outputs[?OutputKey=='SiteBucketName'].OutputValue | [0]" --output text)
-   aws s3 sync site "s3://$bucket/" --delete
-   ```
+## How the map works
 
-4. Open the `SiteUrl` stack output. In **Map settings**, configure the Amazon Location key and region. Test the key on the deployed domain before recording the demo.
-5. If you change the site later, upload again and invalidate CloudFront:
+[MapLibre GL JS](https://maplibre.org/maplibre-gl-js/docs/) renders the interactive map in the browser. QuakeLens converts the returned USGS GeoJSON features into a map source, then displays individual earthquake points and clusters. The map uses marker size to communicate magnitude and colour to communicate depth band. Selecting an event opens a detail popup and links to the corresponding USGS event page.
 
-   ```powershell
-   $distribution = (aws cloudformation describe-stacks --stack-name quakelens --query "Stacks[0].Outputs[?OutputKey=='DistributionId'].OutputValue | [0]" --output text)
-   aws cloudfront create-invalidation --distribution-id $distribution --paths "/*"
-   ```
+**Amazon Location Service** provides the map style and basemap tiles. The application uses a restricted Amazon Location API key for browser map access. If the key is unavailable, the source code has an OpenStreetMap raster-style fallback; the deployed application is configured to use Amazon Location Service.
 
-To remove the demo infrastructure when finished, delete the stack. Empty the S3 bucket first if it contains objects; removal can otherwise fail. Do not put account credentials or an unrestricted map key in source control.
+## AWS architecture
 
-## Project structure
+QuakeLens is a static, browser-based application. It does not require an application server or a database.
 
 ```text
-site/                 Static single-page map app
-infra/template.yaml   Private S3 origin + CloudFront OAC distribution
-submission-draft.md   Challenge write-up and short demo script
+                         ┌──────────────────────────────┐
+                         │        Visitor's browser     │
+                         │  HTML · CSS · JavaScript     │
+                         │       MapLibre GL JS         │
+                         └──────────────┬───────────────┘
+                                        │
+                    ┌───────────────────┼──────────────────┐
+                    │                   │                  │
+             Static site files     Earthquake data     Basemap style
+                    │                   │                  │
+                    ▼                   ▼                  ▼
+             Amazon CloudFront       USGS GeoJSON      Amazon Location
+                    │                                     Service
+                    ▼
+             Private Amazon S3
+                site bucket
 ```
 
-## Credits
+| Service / technology | Role in QuakeLens |
+|---|---|
+| **Amazon S3** | Stores the static website files in a private bucket. |
+| **Amazon CloudFront** | Delivers the website over HTTPS. CloudFront accesses the private S3 origin using Origin Access Control (OAC). |
+| **Amazon Location Service** | Provides the map style and basemap used by the interactive map. |
+| **AWS CloudFormation** | Defines the hosting infrastructure in `infra/template.yaml`. |
+| **USGS GeoJSON** | Supplies the live earthquake dataset directly to the browser. |
+| **MapLibre GL JS** | Renders the interactive map and earthquake data in the browser. |
 
-Earthquake data: [U.S. Geological Survey (USGS) Earthquake Hazards Program](https://earthquake.usgs.gov/earthquakes/feed/v1.0/geojson.php). Open basemap tiles: [© OpenStreetMap contributors](https://www.openstreetmap.org/copyright). The Amazon Location Service basemap requires an AWS resource and key supplied by the deployer.
+### Request flow
+
+1. A visitor opens the CloudFront URL.
+2. CloudFront retrieves the static site assets from the private S3 bucket.
+3. The browser requests the selected earthquake feed from USGS.
+4. MapLibre GL JS displays the earthquake features over the Amazon Location basemap.
+5. The visitor can filter the displayed events, zoom into clusters, and open event details.
+
+S3 is used for **website hosting**, not as a copy of the live USGS earthquake dataset.
+
+## Repository structure
+
+```text
+quakelens/
+├── infra/
+│   └── template.yaml          # AWS hosting infrastructure
+├── site/
+│   ├── index.html             # Application page
+│   ├── app.js                 # USGS data, filters, statistics and map logic
+│   └── styles.css             # Application styling
+├── Deploy-QuakeLens.ps1       # Uploads site, generates runtime config and invalidates CloudFront
+├── .gitignore                 # Excludes generated configuration and key files
+└── README.md
+```
+
+`site/config.js` is generated by the deployment script and is intentionally **not committed**. The `quakelens-create-key.json` and `quakelens-update-key.json` files used when managing the Amazon Location key are also excluded from the public repository.
+
+## Deployment
+
+The infrastructure and Amazon Location key must exist before running the deployment script. The script does not create the CloudFormation stack or the Location key; it deploys the site to the existing resources.
+
+### Prerequisites
+
+- An AWS account with the required services available in `us-east-1`.
+- AWS CLI installed and configured with credentials for the target account.
+- Windows PowerShell.
+- The CloudFormation stack named `quakelens`, created from `infra/template.yaml`, with outputs named `SiteBucketName` and `DistributionId`.
+- An Amazon Location API key named `QuakeLensMapKey` in `us-east-1`, permitted to access the intended map resource and restricted to the deployed site's HTTP referrer.
+
+Check that the AWS CLI is using the intended account:
+
+```powershell
+aws sts get-caller-identity
+```
+
+### Deploy the website
+
+From the repository root, run:
+
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+.\Deploy-QuakeLens.ps1
+```
+
+The process-level execution-policy change applies only to the current PowerShell session. The deployment script:
+
+1. Reads the S3 bucket and CloudFront distribution IDs from the `quakelens` CloudFormation stack.
+2. Retrieves the existing `QuakeLensMapKey` value without printing it.
+3. Generates `site/config.js` locally for the browser application.
+4. Syncs the `site` folder to the private S3 bucket.
+5. Requests a CloudFront invalidation for the updated site.
+
+After the invalidation completes, open the CloudFront URL printed by the script. The public website is already deployed at:
+
+**[Open QuakeLens](https://d2ksx722i7d9l2.cloudfront.net/)**
+
+## Security notes
+
+- **Never commit AWS IAM access keys, secret keys, session tokens, or other AWS credentials.**
+- Do not commit `site/config.js` or the key-management JSON files. They are excluded through `.gitignore`.
+- The Amazon Location key used by a browser application is visible to visitors as part of normal browser requests. It is a public application key, **not** an AWS IAM credential. Restrict it to the required map actions, intended map resource, and your website's referrer; review usage and billing regularly.
+- Do not rely on a referrer restriction as a substitute for limiting key permissions and monitoring usage.
+- The S3 bucket is private; CloudFront is the public delivery endpoint.
+
+## Technology stack
+
+- HTML5
+- CSS3
+- JavaScript (no build step or package manager required)
+- [MapLibre GL JS](https://maplibre.org/maplibre-gl-js/docs/)
+- [USGS Earthquake GeoJSON](https://earthquake.usgs.gov/earthquakes/feed/v1.0/geojson.php)
+- Amazon Location Service
+- Amazon S3, Amazon CloudFront, and AWS CloudFormation
+
+## Challenge submission checklist
+
+For the AWS Builder Center Weekend Challenge: Map it entry, include:
+
+- The USGS dataset and the information it contains.
+- How MapLibre GL JS displays the GeoJSON data and how Amazon Location Service provides the basemap.
+- The AWS services used and each service's role.
+- The live application URL: [QuakeLens](https://d2ksx722i7d9l2.cloudfront.net/).
+- A public demo video shorter than three minutes in the Builder Center submission's **demo** field.
+
+A public source repository is encouraged by the challenge. The demo video link is not included here because it should be added once the video has been published.
+
+## Acknowledgements
+
+- Earthquake data: [United States Geological Survey (USGS)](https://www.usgs.gov/programs/earthquake-hazards).
+- Mapping library: [MapLibre GL JS](https://maplibre.org/maplibre-gl-js/docs/).
+- Basemap: Amazon Location Service. The source also contains an OpenStreetMap fallback; OpenStreetMap data attribution is shown in the application when that fallback is used.
