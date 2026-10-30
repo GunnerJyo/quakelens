@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101820">
+  <meta name="description" content="Explore the latest earthquakes around the world with QuakeLens, a live map powered by USGS data.">
+  <title>QuakeLens — Earth, in motion</title>
+  <link rel="preconnect" href="https://cdn.jsdelivr.net">
+  <link rel="preconnect" href="https://earthquake.usgs.gov">
+  <link href="https://cdn.jsdelivr.net/npm/maplibre-gl@5.x/dist/maplibre-gl.css" rel="stylesheet">
+  <link href="./styles.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/maplibre-gl@5.x/dist/maplibre-gl.js" defer></script>
+  <script src="./config.js" defer></script>
+  <script src="./app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="#" aria-label="QuakeLens home"><span class="brand-mark" aria-hidden="true">Q</span><span>quake<span class="brand-light">lens</span></span></a>
+    <div class="topbar-meta"><span class="live-dot"></span><span>LIVE USGS CATALOG</span><span class="top-divider"></span><span id="updated-at">Connecting…</span></div>
+  </header>
+  <main class="app-shell">
+    <aside class="sidebar">
+      <div class="intro"><div class="eyebrow">THE PLANET, RIGHT NOW</div><h1>Earth,<br><em>in motion.</em></h1><p class="lede">Every tremor tells a story. Explore the past week of seismic activity, one point at a time.</p></div>
+      <section class="control-card" aria-label="Map filters">
+        <div class="control-row"><label for="period">TIME WINDOW</label><span class="select-wrap"><select id="period"><option value="all_day">Past 24 hours</option><option value="all_week" selected>Past 7 days</option><option value="all_month">Past 30 days</option></select></span></div>
+        <div class="control-row"><label for="magnitude">MINIMUM MAGNITUDE <strong id="magnitude-value">All</strong></label></div>
+        <input id="magnitude" type="range" min="0" max="6" step="0.5" value="0" aria-label="Minimum magnitude">
+        <div class="range-labels"><span>Any</span><span>2</span><span>4</span><span>6+</span></div>
+      </section>
+      <section class="stats" aria-label="Earthquake summary">
+        <div class="stat"><span class="stat-label">EVENTS SHOWN</span><strong id="count-stat">—</strong></div>
+        <div class="stat"><span class="stat-label">M4.5 AND ABOVE</span><strong id="strong-stat">—</strong></div>
+        <div class="stat stat-wide"><span class="stat-label">LARGEST THIS WINDOW</span><strong id="largest-stat">—</strong><span id="largest-place" class="stat-caption">Waiting for catalog…</span></div>
+      </section>
+      <div class="list-heading"><div><span class="eyebrow">FIELD NOTES</span><h2>Recent events</h2></div><button id="refresh" class="refresh-button" title="Refresh earthquake data">↻ <span>Refresh</span></button></div>
+      <div id="event-list" class="event-list" aria-live="polite"><div class="loading-state"><span class="spinner"></span>Fetching the latest catalog</div></div>
+      <footer class="sidebar-footer"><span>Data: <a href="https://earthquake.usgs.gov/earthquakes/feed/v1.0/geojson.php" target="_blank" rel="noreferrer">USGS GeoJSON</a></span><span id="result-count"></span></footer>
+    </aside>
+    <section class="map-panel" aria-label="Interactive earthquake map">
+      <div id="map" role="application" aria-label="World map showing earthquake locations"></div>
+      <div class="map-topline"><span class="map-kicker"><span class="live-dot"></span> GLOBAL SEISMIC ACTIVITY</span><span id="map-mode" class="map-mode">OPEN BASEMAP</span></div>
+      <div class="map-legend"><span class="legend-title">DEPTH</span><span><i class="legend-dot shallow"></i>0–70 km</span><span><i class="legend-dot mid"></i>70–300 km</span><span><i class="legend-dot deep"></i>300+ km</span><span class="legend-size">Circle size = magnitude</span></div>
+      <div class="map-credit">Map tiles © OpenStreetMap contributors</div>
+      <div id="map-error" class="map-error" hidden></div>
+    </section>
+  </main>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+</body>
+</html>
